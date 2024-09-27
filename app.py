@@ -2,35 +2,29 @@ import numpy as np
 import sqlite3
 import tensorflow as tf
 import streamlit as st
-from PIL import Image
-import io  # For handling byte data
-from datetime import datetime  # To handle date and time
+from PIL import Image, ImageDraw
+import io
+from datetime import datetime
 
-# SQLite database setup
-conn = sqlite3.connect('hist.db')
+# Koneksi ke database SQLite
+conn = sqlite3.connect('history.db')
 c = conn.cursor()
 
-# Add a 'date' column of type TEXT to store the date of prediction
+# Buat tabel untuk menyimpan riwayat prediksi jika belum ada
 c.execute('''CREATE TABLE IF NOT EXISTS history
-             (image_name TEXT, label TEXT, image BLOB, damage_count INTEGER, date TEXT)''')
+             (image_name TEXT, label TEXT, image BLOB, damage_count INTEGER, avg_confidence REAL, date TEXT)''')
 
-# Load the model (replace 'model.keras' with your actual model path)
-model = tf.keras.models.load_model('best_model.keras')
+# Muat model
+model = tf.keras.models.load_model('model.keras', safe_mode=False)
 
-# Streamlit UI
-st.title("Solar Panel Damage Classification")
+# Streamlit UI untuk unggah gambar
+st.title("Deteksi Kerusakan Panel Surya")
+uploaded_file = st.file_uploader("Unggah gambar panel surya", type=["jpg", "png"])
 
-# Image upload
-uploaded_file = st.file_uploader("Upload a solar panel image", type=["jpg", "png"])
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
 
-    # Convert image to binary data (BLOB)
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')  # Use PNG format to avoid issues with image formats
-    img_byte_data = img_byte_arr.getvalue()  # This will be saved to the database as BLOB
-
-    # Crop the image into 5 columns and 4 rows (20 sections)
+    # Potong gambar jadi 5 kolom dan 4 baris
     width, height = image.size
     cropped_images = []
     crop_width, crop_height = width // 5, height // 4
@@ -42,76 +36,96 @@ if uploaded_file is not None:
             right = (col + 1) * crop_width
             lower = (row + 1) * crop_height
             cropped_image = image.crop((left, upper, right, lower))
-            cropped_images.append(cropped_image)
+            cropped_images.append((cropped_image, (left, upper, right, lower)))  # Simpan posisi
 
-    # Preprocess and predict for each cropped image
     damage_scores = 0
+    total_confidence = 0
+    draw = ImageDraw.Draw(image)  # Untuk gambar bounding box
 
-    for cropped_image in cropped_images:
-        cropped_image = cropped_image.resize((160, 160))
+    # Prediksi tiap bagian
+    for cropped_image, box in cropped_images:
+        cropped_image = cropped_image.resize((299, 299))
         image_array = tf.keras.preprocessing.image.img_to_array(cropped_image)
         image_array = np.expand_dims(image_array, axis=0)
         image_array /= 255.0
 
-        # Predict damage
+        # Prediksi model
         prediction = model.predict(image_array)
         confidence = prediction[0][0]
-        if confidence < 0.5:
-            damage_scores += 1  # Increment damage scores when section is damaged
 
-    # Classify based on the number of damaged sections
+        # Jika confidence < 0.5 (indicates damage), gunakan 100 - confidence
+        if confidence < 0.5:
+            adjusted_confidence = 100 - (confidence * 100)
+            damage_scores += 1  # Tambahkan ke hitungan kerusakan
+            draw.rectangle(box, outline="green", width=2)  # Gambar bounding box hijau
+        else:
+            adjusted_confidence = confidence * 100
+
+        # Tambahkan confidence (adjusted atau asli) ke total
+        total_confidence += adjusted_confidence
+
+    # Hitung rerata confidence rate (menggunakan total yang disesuaikan)
+    avg_confidence = total_confidence / 20
+
+    # Tentukan label kerusakan
     if damage_scores == 0:
-        label = "No Damage"
+        label = "Tidak Rusak"
     elif 1 <= damage_scores <= 10:
-        label = "Minor Damage"
+        label = "Kerusakan Ringan"
     else:
-        label = "Severe Damage"
+        label = "Kerusakan Berat"
 
     image_name = uploaded_file.name
-    # Display the result
-    st.image(image, caption=image_name, use_column_width=True)
-    st.write(f"Classification: {label}")
-    st.write(f"Damaged panels: {damage_scores}/20")
 
-    # Get the current date and time in a readable format (e.g., 20 Sep 2024, 03:30 PM)
+    # Tampilkan hasil
+    st.image(image, caption=image_name, use_column_width=True)
+    st.write(f"Klasifikasi: {label}")
+    st.write(f"Jumlah panel rusak: {damage_scores}/20")
+    st.write(f"Rata-rata tingkat keyakinan: {avg_confidence:.2f}%")
+
+    # Konversi gambar hasil (yang sudah ada bounding box) ke format BLOB
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='PNG')
+    img_byte_data = img_byte_arr.getvalue()
+
+    # Dapatkan tanggal saat ini
     current_date = datetime.now().strftime("%d %b %Y, %I:%M %p")
 
-    # Save to database (image name, label, image blob, damage count, and date)
-    c.execute("INSERT INTO history (image_name, label, image, damage_count, date) VALUES (?, ?, ?, ?, ?)",
-              (image_name, label, img_byte_data, int(damage_scores), current_date))  # Include the formatted date
+    # Simpan gambar yang sudah diberi bounding box dan informasi ke database
+    c.execute("INSERT INTO history (image_name, label, image, damage_count, avg_confidence, date) VALUES (?, ?, ?, ?, ?, ?)",
+              (image_name, label, img_byte_data, int(damage_scores), avg_confidence, current_date))
     conn.commit()
 
-# Display history
-st.subheader("Prediction History")
-
-# Modify SQL query to retrieve history ordered by date in descending order (most recent first)
+# Tampilkan riwayat prediksi
+st.subheader("Riwayat Prediksi")
 history = c.execute("SELECT * FROM history ORDER BY date DESC").fetchall()
 
 if history:
     for row in history:
         image_name = row[0]
         label = row[1]
-        image_data = row[2]  # Retrieve the BLOB data (binary image data)
-        damage_count = int(row[3])  # Ensure the damage count is an integer
-        date = row[4]  # Retrieve the date
+        image_data = row[2]
+        damage_count = int(row[3])
+        avg_confidence = float(row[4])
+        date = row[5]
 
-        # Convert the BLOB data back into an image
-        img = Image.open(io.BytesIO(image_data))  # Convert binary data to image
+        # Konversi BLOB ke gambar
+        img = Image.open(io.BytesIO(image_data))
 
-        # Display the history using a clean, structured layout
-        col1, col2 = st.columns([1, 2])  # 1/3 image, 2/3 text
+        # Tampilkan riwayat
+        col1, col2 = st.columns([1, 2])
         with col1:
             st.image(img, caption=image_name, use_column_width=True)
 
         with col2:
-            st.write(f"**Classification**: {label}")
-            st.write(f"**Damaged Panels**: {damage_count}/20")
-            st.write(f"**Date**: {date}")
+            st.write(f"**Klasifikasi**: {label}")
+            st.write(f"**Panel Rusak**: {damage_count}/20")
+            st.write(f"**Rata-rata tingkat keyakinan**: {avg_confidence:.2f}%")
+            st.write(f"**Tanggal**: {date}")
 
-        # Add a horizontal line to separate entries
         st.markdown("---")
 else:
-    st.write("No predictions yet.")
+    st.write("Belum ada prediksi.")
 
-# Close the database connection on exit
+# Tutup koneksi database
 conn.close()
