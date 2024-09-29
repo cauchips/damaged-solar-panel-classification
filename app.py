@@ -15,6 +15,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS history
              (image_name TEXT, label TEXT, image BLOB, damage_count INTEGER, avg_confidence REAL, date TEXT)''')
 
 # Muat model
+@st.cache # Mengurangi kebutuhan memory server
 model = tf.keras.models.load_model('model.keras', safe_mode=False)
 
 # Streamlit UI untuk unggah gambar
