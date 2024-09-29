@@ -57,7 +57,7 @@ if uploaded_file is not None:
         if confidence < 0.5:
             adjusted_confidence = 100 - (confidence * 100)
             damage_scores += 1  # Tambahkan ke hitungan kerusakan
-            draw.rectangle(box, outline="green", width=2)  # Gambar bounding box hijau
+            draw.rectangle(box, outline="green", width=3)  # Gambar bounding box hijau
         else:
             adjusted_confidence = confidence * 100
 
@@ -81,7 +81,7 @@ if uploaded_file is not None:
     st.image(image, caption=image_name, use_column_width=True)
     st.write(f"Klasifikasi: {label}")
     st.write(f"Jumlah panel rusak: {damage_scores}/20")
-    st.write(f"Rata-rata tingkat keyakinan: {avg_confidence:.2f}%")
+    st.write(f"Tingkat akurasi: {avg_confidence:.2f}%")
 
     # Konversi gambar hasil (yang sudah ada bounding box) ke format BLOB
     img_byte_arr = io.BytesIO()
@@ -119,8 +119,8 @@ if history:
 
         with col2:
             st.write(f"**Klasifikasi**: {label}")
-            st.write(f"**Panel Rusak**: {damage_count}/20")
-            st.write(f"**Rata-rata tingkat keyakinan**: {avg_confidence:.2f}%")
+            st.write(f"**Jumlah Panel Rusak**: {damage_count}/20")
+            st.write(f"**Tingkat Akurasi**: {avg_confidence:.2f}%")
             st.write(f"**Tanggal**: {date}")
 
         st.markdown("---")
