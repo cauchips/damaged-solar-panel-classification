@@ -16,7 +16,9 @@ c.execute('''CREATE TABLE IF NOT EXISTS history
 
 # Muat model
 @st.cache # Mengurangi kebutuhan memory server
-model = tf.keras.models.load_model('model.keras', safe_mode=False)
+def load_model():
+    tf.keras.models.load_model('model.keras', safe_mode=False)
+model = load_model()
 
 # Streamlit UI untuk unggah gambar
 st.title("Deteksi Kerusakan Panel Surya")
