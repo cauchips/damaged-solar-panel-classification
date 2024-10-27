@@ -1,9 +1,11 @@
 import streamlit as st
+
+st.set_page_config(page_title="Aplikasi Deteksi Kerusakan Panel Surya", initial_sidebar_state="expanded", page_icon="🌞")
+
 from login_page import login
 from tutorial_page import show_tutorial
 from detection_page import detect_panel_damage
 from history_page import show_history
-st.set_page_config(page_title="Aplikasi Deteksi Kerusakan Panel Surya", initial_sidebar_state="expanded", page_icon="🌞")
 
 # Logo di bagian paling atas halaman
 col1, col2 = st.columns([1, 8])
