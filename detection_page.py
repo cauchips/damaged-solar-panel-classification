@@ -5,6 +5,7 @@ import numpy as np
 import io
 from datetime import datetime
 import sqlite3
+import random  # Import random for manual random adjustments
 
 @st.cache_resource
 def load_model():
@@ -58,6 +59,10 @@ def detect_panel_damage():
 
             prediction = model.predict(image_array)
             confidence = prediction[0][0]
+
+            # Apply random reduction of confidence between 2-6%
+            reduction_percentage = random.uniform(0.02, 0.06)
+            confidence *= (1 - reduction_percentage)
 
             if confidence < 0.5:  # Panel dianggap rusak
                 adjusted_confidence = 100 - (confidence * 100)
